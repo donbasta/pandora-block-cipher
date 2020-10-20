@@ -4,6 +4,7 @@ import random
 
 
 F_BOX_INP_BYTE_SIZE = 4
+ROUND = 6
 
 KEYS = [int.from_bytes(os.urandom(4), byteorder='big') for i in range(6)]
 
@@ -87,17 +88,15 @@ def f_box(inp: np.ndarray, key: np.ndarray):
 
 def encrypt_block(pt_bytl: np.ndarray, keys_bytl: np.ndarray) -> np.ndarray:
     ls, rs = pt_bytl[:4], pt_bytl[4:]
-    print(ls, rs)
 
-    ROUND = 6
+    print('BEFORE', ls, rs)
     for i in range(ROUND):
-        ls, rs = f_box(rs, keys_bytl), ls
-        print('ROUND', i)
-        print(ls, rs)
-
-    print(ls)
-    print(rs)
-    return ls.tolist() + rs.tolist()
+        print('fbox =', f_box(rs, keys_bytl))
+        ls, rs = rs, ls ^ f_box(rs, keys_bytl)
+        print('ROUND', i, ls, rs)
+    # reverse last swap
+    ls, rs = rs, ls
+    return np.array(ls.tolist() + rs.tolist())
 
 
 def encrypt(pt: bytes, keys: bytes):
@@ -109,13 +108,31 @@ def encrypt(pt: bytes, keys: bytes):
 
 if __name__ == '__main__':
     # inp = [int('10101010', 2), int('10101010', 2), int('10101010', 2), int('10101010', 2)]
-    inp = [int('10101010', 2), int('10101010', 2), int('10101010', 2), int('10101010', 2), int('10101010', 2), int('10101010', 2), int('10101010', 2), int('10101010', 2)]
+    inp = [int('11101010', 2), int('10101010', 2), int('10101010', 2), int('10101010', 2), int('10101010', 2), int('10101010', 2), int('10101010', 2), int('10101010', 2)]
     key = [int('11110000', 2), int('11110000', 2), int('11110000', 2), int('11110000', 2)]
-    print(inp, key)
+    print('pt', inp)
+    print('key', key)
+
     import time
     st = time.time()
+
+    print()
+    print('enc')
     ct = encrypt_block(np.array(inp), np.array(key))
-    print(ct)
+    print('enc end')
+    print('ct', ct)
+    print()
+    print('dec')
+    new_pt = encrypt_block(ct, np.array(key))
+    print('dec end')
+    print('new pt', new_pt)
+
+    ed = time.time()
+    print('\ntime:', ed - st)
+
+    assert all(inp == new_pt)
+    print('\nok')
+
     # # sisip key
     # temp = sisip_key(inp, key)
     # print(temp)
@@ -139,5 +156,3 @@ if __name__ == '__main__':
     # print(temp_2)
     # # sub comp
     #
-    ed = time.time()
-    print(ed - st)
