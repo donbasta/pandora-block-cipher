@@ -9,12 +9,25 @@ ROUND = 6
 KEYS = [int.from_bytes(os.urandom(4), byteorder='big') for i in range(6)]
 
 P_BOX = np.array([i for i in range(16)])
-np.random.seed(int.from_bytes(b'random_seed', byteorder='big') % 2 ** 32)
+np.random.seed(int.from_bytes(b'p_box_seed', byteorder='big') % (2 ** 32))
 np.random.shuffle(P_BOX)
 PI_BOX = P_BOX.argsort()
 P_BOX = PI_BOX.argsort()
 print(f'P_BOX = {P_BOX}')
 print(f'PI_BOX = {PI_BOX}')
+print()
+
+S_BOX_0 = np.array([i for i in range(256)])
+np.random.seed(int.from_bytes(b's_box_0_1l3ifn', byteorder='big') % (2 ** 32))
+np.random.shuffle(S_BOX_0)
+S_BOX_0 = S_BOX_0.reshape(16, 16)
+
+S_BOX_1 = np.array([i for i in range(256)])
+np.random.seed(int.from_bytes(b's_box_1_azlkjf', byteorder='big') % (2 ** 32))
+np.random.shuffle(S_BOX_1)
+S_BOX_1 = S_BOX_1.reshape(16, 16)
+
+S_BOX = [S_BOX_0, S_BOX_1]
 
 
 def byte_to_bit_list(byt: int) -> list:
@@ -50,40 +63,52 @@ def p_box(inp: np.ndarray) -> np.ndarray:
     return inp[P_BOX]
 
 
-def rot_x(byt: int, x: int):
+def rot_x(byt: int, x: int) -> int:
     x = x % 8
     return ((byt << x) | (byt >> (8 - x))) & 0xff
 
 
-def sub_f_box(byt1: int, byt2: int, x: int):
+def sub_f_box(byt1: int, byt2: int, x: int) -> int:
     return rot_x((byt1 ^ byt2) + x, x)
 
 
-def s_box():
-    pass
+def s_box(byt: int, offset: int, s_box_id: int) -> int:
+    assert s_box_id in [0, 1]
+    byt = (byt + offset) % 256
+    return S_BOX[s_box_id][(byt >> 4) & 0xf][byt & 0xf]
+
+
+def s_compress(inp_bytl: np.ndarray) -> np.ndarray:
+    assert len(inp_bytl) == 2 * F_BOX_INP_BYTE_SIZE
+    res = []
+    res.append(s_box(inp_bytl[0], 0, 0) ^ s_box(inp_bytl[7], 0, 1))
+    res.append(s_box(inp_bytl[1], 1, 0) ^ s_box(inp_bytl[6], 1, 1))
+    res.append(s_box(inp_bytl[2], 2, 0) ^ s_box(inp_bytl[5], 2, 1))
+    res.append(s_box(inp_bytl[3], 3, 0) ^ s_box(inp_bytl[4], 3, 1))
+    return np.array(res)
 
 
 def f_box(inp: np.ndarray, key: np.ndarray):
     # sisip key
-    temp = sisip_key(inp, key)
+    imm = sisip_key(inp, key)
     # expand matrix
-    temp = expand_matrix(temp)
+    imm = expand_matrix(imm)
     # p network
-    temp = p_box(temp)
+    imm = p_box(imm)
     # swap network
-    temp_2 = []
-    temp_2.append(sub_f_box(temp[1], temp[3], 0))
-    temp_2.append(sub_f_box(temp[0], temp[2], 1))
-    temp_2.append(sub_f_box(temp[5], temp[7], 2))
-    temp_2.append(sub_f_box(temp[4], temp[6], 3))
-    temp_2.append(sub_f_box(temp[9], temp[11], 4))
-    temp_2.append(sub_f_box(temp[8], temp[10], 5))
-    temp_2.append(sub_f_box(temp[13], temp[15], 6))
-    temp_2.append(sub_f_box(temp[12], temp[14], 7))
-    temp_2 = np.array(temp_2)
+    imm_2 = []
+    imm_2.append(sub_f_box(imm[1], imm[3], 0))
+    imm_2.append(sub_f_box(imm[0], imm[2], 1))
+    imm_2.append(sub_f_box(imm[5], imm[7], 2))
+    imm_2.append(sub_f_box(imm[4], imm[6], 3))
+    imm_2.append(sub_f_box(imm[9], imm[11], 4))
+    imm_2.append(sub_f_box(imm[8], imm[10], 5))
+    imm_2.append(sub_f_box(imm[13], imm[15], 6))
+    imm_2.append(sub_f_box(imm[12], imm[14], 7))
+    imm_2 = np.array(imm_2)
     # sub comp
-    # TODO: implement
-    return temp_2[:4]
+    res = s_compress(imm_2)
+    return res
 
 
 def encrypt_block(pt_bytl: np.ndarray, keys_bytl: np.ndarray) -> np.ndarray:
@@ -108,51 +133,41 @@ def encrypt(pt: bytes, keys: bytes):
 
 if __name__ == '__main__':
     # inp = [int('10101010', 2), int('10101010', 2), int('10101010', 2), int('10101010', 2)]
-    inp = [int('11101010', 2), int('10101010', 2), int('10101010', 2), int('10101010', 2), int('10101010', 2), int('10101010', 2), int('10101010', 2), int('10101010', 2)]
+    inp = [int('11101010', 2), int('10101011', 2), int('10101110', 2), int('00101010', 2), int('10101010', 2), int('10101010', 2), int('10101010', 2), int('10101010', 2)]
     key = [int('11110000', 2), int('11110000', 2), int('11110000', 2), int('11110000', 2)]
+    wrong_key = [int('11110000', 2), int('11110000', 2), int('11110000', 2), int('11110001', 2)]
     print('pt', inp)
     print('key', key)
 
     import time
     st = time.time()
 
+    # encrypt
     print()
     print('enc')
     ct = encrypt_block(np.array(inp), np.array(key))
     print('enc end')
     print('ct', ct)
+    # decrypt
     print()
     print('dec')
     new_pt = encrypt_block(ct, np.array(key))
     print('dec end')
     print('new pt', new_pt)
+    # try wrong key
+    print()
+    print('dec wrong')
+    wrong_pt = encrypt_block(ct, np.array(wrong_key))
+    print('dec wrong end')
+    print('wrong pt', wrong_pt)
 
     ed = time.time()
     print('\ntime:', ed - st)
 
     assert all(inp == new_pt)
+    assert any(inp != wrong_pt)
+    diff = 0
+    for i, j in zip(inp, wrong_pt):
+        if i != j: diff += 1
+    print('right and wrong key decrypted ct difference:', diff)
     print('\nok')
-
-    # # sisip key
-    # temp = sisip_key(inp, key)
-    # print(temp)
-    # # expand matrix
-    # temp = expand_matrix(temp)
-    # print(temp)
-    # # p network
-    # temp = p_box(temp)
-    # print(temp)
-    # # swap network
-    # temp_2 = []
-    # temp_2.append(sub_f_box(temp[1], temp[3], 0))
-    # temp_2.append(sub_f_box(temp[0], temp[2], 1))
-    # temp_2.append(sub_f_box(temp[5], temp[7], 2))
-    # temp_2.append(sub_f_box(temp[4], temp[6], 3))
-    # temp_2.append(sub_f_box(temp[9], temp[11], 4))
-    # temp_2.append(sub_f_box(temp[8], temp[10], 5))
-    # temp_2.append(sub_f_box(temp[13], temp[15], 6))
-    # temp_2.append(sub_f_box(temp[12], temp[14], 7))
-    # temp_2 = np.array(temp_2)
-    # print(temp_2)
-    # # sub comp
-    #
