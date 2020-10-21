@@ -2,22 +2,23 @@ import numpy as np
 import os
 import random
 import hashlib
+from cipher import *
 
 BLOCK_SIZE = 8
 ROUND = 6
 MASK = 0xffffffff
 
-S_BOX_0 = np.array([i for i in range(256)])
-np.random.seed(int.from_bytes(b's_box_0_1l3ifn', byteorder='big') % (2 ** 32))
-np.random.shuffle(S_BOX_0)
-S_BOX_0 = S_BOX_0.reshape(16, 16)
+# S_BOX_0 = np.array([i for i in range(256)])
+# np.random.seed(int.from_bytes(b's_box_0_1l3ifn', byteorder='big') % (2 ** 32))
+# np.random.shuffle(S_BOX_0)
+# S_BOX_0 = S_BOX_0.reshape(16, 16)
 
-S_BOX_1 = np.array([i for i in range(256)])
-np.random.seed(int.from_bytes(b's_box_1_azlkjf', byteorder='big') % (2 ** 32))
-np.random.shuffle(S_BOX_1)
-S_BOX_1 = S_BOX_1.reshape(16, 16)
+# S_BOX_1 = np.array([i for i in range(256)])
+# np.random.seed(int.from_bytes(b's_box_1_azlkjf', byteorder='big') % (2 ** 32))
+# np.random.shuffle(S_BOX_1)
+# S_BOX_1 = S_BOX_1.reshape(16, 16)
 
-S_BOX = [S_BOX_0, S_BOX_1]
+# S_BOX = [S_BOX_0, S_BOX_1]
 
 S_BOX_AES = [0 for i in range(256)]
 
@@ -32,27 +33,14 @@ def generate_aes_s_box():
 
   while True:
     tp = 0x11b if (p & 0x80) else 0
-    # print(p)
-
     p = p ^ (p << 1) ^ tp
-
     q ^= (q << 1)
     q ^= (q << 2)
     q ^= (q << 4)
-
     tq = 0x09 if (q & 0x80) else 0
     q ^= tq
-
     q &= 0xff
-
-    # print("tes", bin(q))
-    # print("tes", bin(rotl8_x(q, 1)))
-    # print("tes", bin(rotl8_x(q, 2)))
-    # print("tes", bin(rotl8_x(q, 3)))
-    # print("tes", bin(rotl8_x(q, 4)))
-
     x = q ^ rotl8_x(q, 1) ^ rotl8_x(q, 2) ^ rotl8_x(q, 3) ^ rotl8_x(q, 4)
-    # print(p, q, x)
     S_BOX_AES[p] = x ^ 0x63
 
     if p == 1:
@@ -93,27 +81,21 @@ def s_box(x: int, idx: int):
 
 def sub_x(x):
   bin_x = to_key(x)
-  print("key in biner: ", bin_x)
+  # print("key in biner: ", bin_x)
   sb0 = s_box(int(bin_x[:8], 2), 0)
-  sb1 = s_box(int(bin_x[8:16], 2), 0)
-  # sb1 = s_box_aes(int(bin_x[8:16], 2))
+  # sb1 = s_box(int(bin_x[8:16], 2), 0)
+  sb1 = s_box_aes(int(bin_x[8:16], 2))
   sb2 = s_box(int(bin_x[16:24], 2), 1)
-  sb3 = s_box(int(bin_x[24:], 2), 1)
-  # sb3 = s_box_aes(int(bin_x[24:], 2))
-  # print("-"*50)
-  # print(sb0, sb0)
-  # print(sb1, sb1<<8)
-  # print(sb2, sb2<<16)
-  # print(sb3, int(sb3)<<24, 168, 168<<24)
-  # print("-"*50)
+  # sb3 = s_box(int(bin_x[24:], 2), 1)
+  sb3 = s_box_aes(int(bin_x[24:], 2))
   return (int(sb0) + (int(sb1)<<8) + (int(sb2)<<16) + (int(sb3)<<24))
   # return get_word(sb0, sb1, sb2, sb3)
 
 def box(x: int):
   temp = rot_word_x(x)
-  print("abis rot", temp)
+  # print("abis rot", temp)
   temp = sub_x(temp)
-  print("abis sub", temp)
+  # print("abis sub", temp)
   return temp
 
 def to_key(x: int):
@@ -132,8 +114,9 @@ def md5(x: bytes):
 
 # x is key generated using md5
 def generate_key_each_round(x: bytes):
-  int_x = int(x, 16)
-  print(int_x)
+  md5_x = md5(x)
+  int_x = int(md5_x, 16)
+  # print(int_x)
   x0 = (int_x >> 3 * 32) & MASK
   x1 = (int_x >> 2 * 32) & MASK
   x2 = (int_x >> 1 * 32) & MASK
@@ -143,9 +126,6 @@ def generate_key_each_round(x: bytes):
   sisip_key = []
 
   for i in range(0, ROUND + 1):
-    print(x0, x1, x2, x3)
-    print(x0^x2, x1^x3)
-    print("lol", bin(x0^x2), bin(x1^x3))
     mat_key.append(to_key(x0 ^ x2))
     sisip_key.append(to_key(x1 ^ x3))
 
@@ -153,8 +133,6 @@ def generate_key_each_round(x: bytes):
     x1 = px2 ^ px3
     x2 = px1 ^ px0
     x0 = box(px0) ^ x1
-    print("box", box(px0))
-    print("tesuto", x0)
     if i % 4 == 0:
       x0 ^= rc[i // 4]
     x3 = box(px3) ^ x2
@@ -164,17 +142,13 @@ def generate_key_each_round(x: bytes):
   return {"mat_key" : mat_key,
           "sisip_key" : sisip_key}
 
+generate_rc()
+generate_aes_s_box()
+
 if __name__ == "__main__":
 
-  generate_rc()
-  generate_aes_s_box()
-
   key = b'tes'
-  md5_key = md5(key)
-  keys = generate_key_each_round(md5_key)
+  keys = generate_key_each_round(key)
 
   print("Keys for matrix in each round: \n", keys["mat_key"])
   print("Keys for sisip in each round: \n", keys["sisip_key"])
-
-  # for i in range(0xff):
-  #   print(i, S_BOX_AES[i])
