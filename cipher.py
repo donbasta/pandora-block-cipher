@@ -3,7 +3,8 @@ import os
 import random
 
 
-F_BOX_INP_BYTE_SIZE = 4
+BLOCK_SIZE = 8
+F_BOX_INP_BYTE_SIZE = BLOCK_SIZE // 2
 ROUND = 6
 
 KEYS = [int.from_bytes(os.urandom(4), byteorder='big') for i in range(6)]
@@ -28,14 +29,6 @@ np.random.shuffle(S_BOX_1)
 S_BOX_1 = S_BOX_1.reshape(16, 16)
 
 S_BOX = [S_BOX_0, S_BOX_1]
-
-
-def byte_to_bit_list(byt: int) -> list:
-    return list(map(int, bin(byt).lstrip('0b').rjust(8, '0')))
-
-
-def bit_list_to_byte(bitl: list) -> int:
-    return int(''.join(map(str, bitl)), 2)
 
 
 # inp and key is represented in byte list, return new byte list
@@ -124,14 +117,68 @@ def encrypt_block(pt_bytl: np.ndarray, keys_bytl: np.ndarray) -> np.ndarray:
     return np.array(ls.tolist() + rs.tolist())
 
 
-def encrypt(pt: bytes, keys: bytes):
+def encrypt(pt: bytes, key: bytes) -> bytes:
+    # TODO: implement key generation, then feed to encrypt_block
+    assert len(key) == F_BOX_INP_BYTE_SIZE  # TODO: change to BLOCK_SIZE as it is master key
+    # prepare
+    pt = np.array(list(pt))
+    key = np.array(list(key))
+    # encryption
     ct = b''
-    for block in [pt[i:i+8] for i in range(0, len(pt), 8)]:
-        ct += encrypt_block(int.from_bytes(block, byteorder='big'), keys).to_bytes(length=8, byteorder='big')
+    for block in [pt[i:i+BLOCK_SIZE] for i in range(0, len(pt), BLOCK_SIZE)]:
+
+        ct += bytes(encrypt_block(block, key).tolist())
+        print('imm ct:', ct)
+    # finish
+    print('last ct:', ct)
     return ct
 
 
+def decrypt(ct: bytes, key: bytes) -> bytes:
+    # TODO: implement, reverse key, call encrypt
+    pass
+
+
+# helper
+def pad(input: bytes) -> bytes:
+    pad_len = BLOCK_SIZE - (len(input) % BLOCK_SIZE)
+    pad = chr(pad_len).encode('latin-1') * pad_len
+    return input + pad
+
+def unpad(padded_input: bytes) -> bytes:
+    pad_len = padded_input[-1]
+    return padded_input[:-pad_len]
+
+
+def byte_to_bit_list(byt: int) -> list:
+    return list(map(int, bin(byt).lstrip('0b').rjust(8, '0')))
+
+
+def bit_list_to_byte(bitl: list) -> int:
+    return int(''.join(map(str, bitl)), 2)
+
+
 if __name__ == '__main__':
+    # TEST encrypt
+    key = b'abcd'
+    wrong_key = b'1234'
+    pt = b'testganz'
+    ct = encrypt(pad(pt), key)
+    print()
+    new_pt = unpad(encrypt(ct, key))
+    print()
+    wrong_pt = unpad(encrypt(ct, wrong_key))
+    print()
+    print('pt:', pt)
+    print('ct:', ct)
+    print('new_pt:', new_pt)
+    print('wrong_pt:', wrong_pt)
+    assert pt == new_pt
+    assert pt != wrong_pt
+    print('ok')
+    print()
+
+    # TEST encrypt_block
     # inp = [int('10101010', 2), int('10101010', 2), int('10101010', 2), int('10101010', 2)]
     inp = [int('11101010', 2), int('10101011', 2), int('10101110', 2), int('00101010', 2), int('10101010', 2), int('10101010', 2), int('10101010', 2), int('10101010', 2)]
     key = [int('11110000', 2), int('11110000', 2), int('11110000', 2), int('11110000', 2)]
