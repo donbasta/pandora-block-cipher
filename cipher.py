@@ -2,35 +2,8 @@ import numpy as np
 import os
 import random
 
+from constants import *
 from keygen import generate_key_each_round
-
-
-BLOCK_SIZE = 8
-F_BOX_INP_BYTE_SIZE = BLOCK_SIZE // 2
-ROUND = 6
-
-KEYS = [int.from_bytes(os.urandom(4), byteorder='big') for i in range(6)]
-
-P_BOX = np.array([i for i in range(16)])
-np.random.seed(int.from_bytes(b'p_box_seed', byteorder='big') % (2 ** 32))
-np.random.shuffle(P_BOX)
-PI_BOX = P_BOX.argsort()
-P_BOX = PI_BOX.argsort()
-print(f'P_BOX = {P_BOX}')
-print(f'PI_BOX = {PI_BOX}')
-print()
-
-S_BOX_0 = np.array([i for i in range(256)])
-np.random.seed(int.from_bytes(b's_box_0_1l3ifn', byteorder='big') % (2 ** 32))
-np.random.shuffle(S_BOX_0)
-S_BOX_0 = S_BOX_0.reshape(16, 16)
-
-S_BOX_1 = np.array([i for i in range(256)])
-np.random.seed(int.from_bytes(b's_box_1_azlkjf', byteorder='big') % (2 ** 32))
-np.random.shuffle(S_BOX_1)
-S_BOX_1 = S_BOX_1.reshape(16, 16)
-
-S_BOX = [S_BOX_0, S_BOX_1]
 
 
 # inp and key is represented in byte list, return new byte list
@@ -43,24 +16,27 @@ def sisip_key(inp_bytl: np.ndarray, key_bytl: np.ndarray) -> np.ndarray:
     return np.array(out_bytl)
 
 
-def get_expansion_matrix(seed='1337') -> np.ndarray:
-    random.seed(seed)
-    return np.array([[random.randint(0, 255) for i in range(16)] for j in range(8)])
+def rot_x(byt: int, x: int) -> int:
+    x = x % 8
+    return ((byt << x) | (byt >> (8 - x))) & 0xff
 
 
-def expand_matrix(inp_bytl: np.ndarray) -> np.ndarray:
-    expansion_matrix = get_expansion_matrix()
+def get_expansion_matrix(key_bytl: np.ndarray) -> np.ndarray:
+    ret = np.zeros((8, 16), dtype=np.uint8)
+    for i in [0,1,2,3]:
+        for j in [0,1,2,3]:
+            for k in [0,1,2,3,4,5,6,7]:
+                ret[k, (4 * i) + j] = S_BOX_AES[rot_x(key_bytl[i], k)] ^ S_BOX_AES[rot_x(key_bytl[j], k+1)]
+    return ret
+
+def expand_matrix(inp_bytl: np.ndarray, key_bytl: np.ndarray) -> np.ndarray:
+    expansion_matrix = get_expansion_matrix(key_bytl)
     return np.matmul(inp_bytl, expansion_matrix) % 256
 
 
 def p_box(inp: np.ndarray) -> np.ndarray:
     assert all(inp[P_BOX][PI_BOX] == inp)
     return inp[P_BOX]
-
-
-def rot_x(byt: int, x: int) -> int:
-    x = x % 8
-    return ((byt << x) | (byt >> (8 - x))) & 0xff
 
 
 def sub_f_box(byt1: int, byt2: int, x: int) -> int:
@@ -87,7 +63,7 @@ def f_box(inp: np.ndarray, key_1_sisip: np.ndarray, key_2_matrix: np.ndarray):
     # sisip key
     imm = sisip_key(inp, key_1_sisip)
     # expand matrix
-    imm = expand_matrix(imm)
+    imm = expand_matrix(imm, key_2_matrix)
     # p network
     imm = p_box(imm)
     # swap network
