@@ -2,6 +2,8 @@ import numpy as np
 import os
 import random
 
+from keygen import generate_key_each_round
+
 
 BLOCK_SIZE = 8
 F_BOX_INP_BYTE_SIZE = BLOCK_SIZE // 2
@@ -81,9 +83,9 @@ def s_compress(inp_bytl: np.ndarray) -> np.ndarray:
     return np.array(res)
 
 
-def f_box(inp: np.ndarray, key: np.ndarray):
+def f_box(inp: np.ndarray, key_1_sisip: np.ndarray, key_2_matrix: np.ndarray):
     # sisip key
-    imm = sisip_key(inp, key)
+    imm = sisip_key(inp, key_1_sisip)
     # expand matrix
     imm = expand_matrix(imm)
     # p network
@@ -104,39 +106,116 @@ def f_box(inp: np.ndarray, key: np.ndarray):
     return res
 
 
-def encrypt_block(pt_bytl: np.ndarray, keys_bytl: np.ndarray) -> np.ndarray:
+def encrypt_block(pt_bytl: np.ndarray, sisip_keys_bytl: np.ndarray, matrix_keys_bytl: np.ndarray) -> np.ndarray:
     ls, rs = pt_bytl[:4], pt_bytl[4:]
 
     print('BEFORE', ls, rs)
     for i in range(ROUND):
-        print('fbox =', f_box(rs, keys_bytl))
-        ls, rs = rs, ls ^ f_box(rs, keys_bytl)
+        print('fbox =', f_box(rs, sisip_keys_bytl[i], matrix_keys_bytl[i]))
+        ls, rs = rs, ls ^ f_box(rs, sisip_keys_bytl[i], matrix_keys_bytl[i])
         print('ROUND', i, ls, rs)
     # reverse last swap
     ls, rs = rs, ls
     return np.array(ls.tolist() + rs.tolist())
 
 
-def encrypt(pt: bytes, key: bytes) -> bytes:
-    # TODO: implement key generation, then feed to encrypt_block
-    assert len(key) == F_BOX_INP_BYTE_SIZE  # TODO: change to BLOCK_SIZE as it is master key
+def encrypt_ecb(pt: bytes, master_key: bytes) -> bytes:
+    assert len(master_key) == BLOCK_SIZE * 2
     # prepare
     pt = np.array(list(pt))
-    key = np.array(list(key))
+    keys_dict = generate_key_each_round(master_key)
+
+    # TODO: remove first el in mat and sisip key
+    sisip_keys = [bytes(int(s[i:i+8], 2) for i in range(0, len(s), 8)) for s in keys_dict["sisip_key"]]
+    sisip_keys_bytl = [np.array(list(key)) for key in sisip_keys[1:]]
+    matrix_keys = [bytes(int(s[i:i+8], 2) for i in range(0, len(s), 8)) for s in keys_dict["mat_key"]]
+    matrix_keys_bytl = [np.array(list(key)) for key in matrix_keys[1:]]
     # encryption
     ct = b''
     for block in [pt[i:i+BLOCK_SIZE] for i in range(0, len(pt), BLOCK_SIZE)]:
-
-        ct += bytes(encrypt_block(block, key).tolist())
+        ct += bytes(encrypt_block(block, sisip_keys_bytl, matrix_keys_bytl).tolist())
         print('imm ct:', ct)
     # finish
     print('last ct:', ct)
     return ct
 
 
-def decrypt(ct: bytes, key: bytes) -> bytes:
-    # TODO: implement, reverse key, call encrypt
-    pass
+def decrypt_ecb(ct: bytes, master_key: bytes) -> bytes:
+    assert len(master_key) == BLOCK_SIZE * 2
+    # prepare
+    ct = np.array(list(ct))
+    keys_dict = generate_key_each_round(master_key)
+
+    # TODO: remove first el in mat and sisip key
+    sisip_keys = [bytes(int(s[i:i+8], 2) for i in range(0, len(s), 8)) for s in keys_dict["sisip_key"]]
+    sisip_keys_bytl = [np.array(list(key)) for key in sisip_keys[1:]]
+    sisip_keys_bytl = sisip_keys_bytl[::-1]
+    matrix_keys = [bytes(int(s[i:i+8], 2) for i in range(0, len(s), 8)) for s in keys_dict["mat_key"]]
+    matrix_keys_bytl = [np.array(list(key)) for key in matrix_keys[1:]]
+    matrix_keys_bytl = matrix_keys_bytl[::-1]
+
+    # encryption
+    pt = b''
+    for block in [ct[i:i+BLOCK_SIZE] for i in range(0, len(ct), BLOCK_SIZE)]:
+        pt += bytes(encrypt_block(block, sisip_keys_bytl, matrix_keys_bytl).tolist())
+        print('imm pt:', pt)
+    # finish
+    print('last pt:', pt)
+    return pt
+
+
+def encrypt_cbc(pt: bytes, master_key: bytes, iv: bytes) -> bytes:
+    assert len(master_key) == BLOCK_SIZE * 2
+    assert len(iv) == BLOCK_SIZE
+    # prepare
+    pt = np.array(list(pt))
+    keys_dict = generate_key_each_round(master_key)
+    iv = np.array(list(iv))
+
+    # TODO: remove first el in mat and sisip key
+    sisip_keys = [bytes(int(s[i:i+8], 2) for i in range(0, len(s), 8)) for s in keys_dict["sisip_key"]]
+    sisip_keys_bytl = [np.array(list(key)) for key in sisip_keys[1:]]
+    matrix_keys = [bytes(int(s[i:i+8], 2) for i in range(0, len(s), 8)) for s in keys_dict["mat_key"]]
+    matrix_keys_bytl = [np.array(list(key)) for key in matrix_keys[1:]]
+
+    # encryption
+    ct = b''
+    prev_ct = iv
+    for block in [pt[i:i+BLOCK_SIZE] for i in range(0, len(pt), BLOCK_SIZE)]:
+        prev_ct = encrypt_block(block ^ prev_ct, sisip_keys_bytl, matrix_keys_bytl)
+        ct += bytes(prev_ct.tolist())
+        print('imm ct:', ct)
+    # finish
+    print('last ct:', ct)
+    return ct
+
+
+def decrypt_cbc(ct: bytes, master_key: bytes, iv: bytes) -> bytes:
+    assert len(master_key) == BLOCK_SIZE * 2
+    assert len(iv) == BLOCK_SIZE
+    # prepare
+    ct = np.array(list(ct))
+    keys_dict = generate_key_each_round(master_key)
+    iv = np.array(list(iv))
+
+    # TODO: remove first el in mat and sisip key
+    sisip_keys = [bytes(int(s[i:i+8], 2) for i in range(0, len(s), 8)) for s in keys_dict["sisip_key"]]
+    sisip_keys_bytl = [np.array(list(key)) for key in sisip_keys[1:]]
+    sisip_keys_bytl = sisip_keys_bytl[::-1]
+    matrix_keys = [bytes(int(s[i:i+8], 2) for i in range(0, len(s), 8)) for s in keys_dict["mat_key"]]
+    matrix_keys_bytl = [np.array(list(key)) for key in matrix_keys[1:]]
+    matrix_keys_bytl = matrix_keys_bytl[::-1]
+
+    # encryption
+    pt = b''
+    prev_ct = iv
+    for block in [ct[i:i+BLOCK_SIZE] for i in range(0, len(ct), BLOCK_SIZE)]:
+        pt += bytes((encrypt_block(block, sisip_keys_bytl, matrix_keys_bytl) ^ prev_ct).tolist())
+        prev_ct = block
+        print('imm pt:', pt)
+    # finish
+    print('last pt:', pt)
+    return pt
 
 
 # helper
@@ -159,15 +238,17 @@ def bit_list_to_byte(bitl: list) -> int:
 
 
 if __name__ == '__main__':
-    # TEST encrypt
-    key = b'abcd'
-    wrong_key = b'1234'
+    key = b'abcdefgh12345678'
+    wrong_key = b'abcdefgh12345679'
     pt = b'testganz'
-    ct = encrypt(pad(pt), key)
+    iv = b'someiviv'
+
+    # TEST encrypt_ecb
+    ct = encrypt_ecb(pad(pt), key)
     print()
-    new_pt = unpad(encrypt(ct, key))
+    new_pt = unpad(decrypt_ecb(ct, key))
     print()
-    wrong_pt = unpad(encrypt(ct, wrong_key))
+    wrong_pt = unpad(decrypt_ecb(ct, wrong_key))
     print()
     print('pt:', pt)
     print('ct:', ct)
@@ -178,43 +259,18 @@ if __name__ == '__main__':
     print('ok')
     print()
 
-    # TEST encrypt_block
-    # inp = [int('10101010', 2), int('10101010', 2), int('10101010', 2), int('10101010', 2)]
-    inp = [int('11101010', 2), int('10101011', 2), int('10101110', 2), int('00101010', 2), int('10101010', 2), int('10101010', 2), int('10101010', 2), int('10101010', 2)]
-    key = [int('11110000', 2), int('11110000', 2), int('11110000', 2), int('11110000', 2)]
-    wrong_key = [int('11110000', 2), int('11110000', 2), int('11110000', 2), int('11110001', 2)]
-    print('pt', inp)
-    print('key', key)
-
-    import time
-    st = time.time()
-
-    # encrypt
+    # TEST encrypt_cbc
+    ct = encrypt_cbc(pad(pt), key, iv)
     print()
-    print('enc')
-    ct = encrypt_block(np.array(inp), np.array(key))
-    print('enc end')
-    print('ct', ct)
-    # decrypt
+    new_pt = unpad(decrypt_cbc(ct, key, iv))
     print()
-    print('dec')
-    new_pt = encrypt_block(ct, np.array(key))
-    print('dec end')
-    print('new pt', new_pt)
-    # try wrong key
+    wrong_pt = unpad(decrypt_cbc(ct, wrong_key, iv))
     print()
-    print('dec wrong')
-    wrong_pt = encrypt_block(ct, np.array(wrong_key))
-    print('dec wrong end')
-    print('wrong pt', wrong_pt)
-
-    ed = time.time()
-    print('\ntime:', ed - st)
-
-    assert all(inp == new_pt)
-    assert any(inp != wrong_pt)
-    diff = 0
-    for i, j in zip(inp, wrong_pt):
-        if i != j: diff += 1
-    print('right and wrong key decrypted ct difference:', diff)
-    print('\nok')
+    print('pt:', pt)
+    print('ct:', ct)
+    print('new_pt:', new_pt)
+    print('wrong_pt:', wrong_pt)
+    assert pt == new_pt
+    assert pt != wrong_pt
+    print('ok')
+    print()

@@ -2,23 +2,24 @@ import numpy as np
 import os
 import random
 import hashlib
-from cipher import *
+# from cipher import *
 
 BLOCK_SIZE = 8
 ROUND = 6
 MASK = 0xffffffff
 
-# S_BOX_0 = np.array([i for i in range(256)])
-# np.random.seed(int.from_bytes(b's_box_0_1l3ifn', byteorder='big') % (2 ** 32))
-# np.random.shuffle(S_BOX_0)
-# S_BOX_0 = S_BOX_0.reshape(16, 16)
+S_BOX_0 = np.array([i for i in range(256)])
+np.random.seed(int.from_bytes(b's_box_0_1l3ifn', byteorder='big') % (2 ** 32))
+np.random.shuffle(S_BOX_0)
+S_BOX_0 = S_BOX_0.reshape(16, 16)
 
-# S_BOX_1 = np.array([i for i in range(256)])
-# np.random.seed(int.from_bytes(b's_box_1_azlkjf', byteorder='big') % (2 ** 32))
-# np.random.shuffle(S_BOX_1)
-# S_BOX_1 = S_BOX_1.reshape(16, 16)
+S_BOX_1 = np.array([i for i in range(256)])
+np.random.seed(int.from_bytes(b's_box_1_azlkjf', byteorder='big') % (2 ** 32))
+np.random.shuffle(S_BOX_1)
+S_BOX_1 = S_BOX_1.reshape(16, 16)
 
-# S_BOX = [S_BOX_0, S_BOX_1]
+S_BOX = [S_BOX_0, S_BOX_1]
+
 
 S_BOX_AES = [0 for i in range(256)]
 
