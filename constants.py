@@ -4,7 +4,7 @@ import numpy as np
 # general constants
 BLOCK_SIZE = 8
 F_BOX_INP_BYTE_SIZE = BLOCK_SIZE // 2
-ROUND = 6
+ROUND = 12
 MASK = 0xffffffff
 
 # p box
