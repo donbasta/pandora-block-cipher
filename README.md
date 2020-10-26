@@ -1,2 +1,2 @@
-# tba-block-cipher
-Block cipher custom, belum ada namanya (tba=to be announced), for IF 4120 Kriptografi
+# pandora-block-cipher
+Pandora is a Block cipher based on Feistel Network.
